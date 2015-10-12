@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -34,6 +36,10 @@ var (
 	// aws region to use
 	region = flag.String("region", "", "AWS Region")
 
+	timeout = flag.Int("timeout", 5, "Sets the timeout towards S3")
+
+	// TODO(nils): add profile and logging to file
+
 	// username to authenticate
 	user = ""
 
@@ -45,6 +51,7 @@ Options:
  -bucket             S3 bucket name
  -key                S3 key prefix in bucket
  -region             AWS Region
+ -timeout            Timeout towards S3
 
 The final S3 url will be: bucket/prefix/username
 `
@@ -74,9 +81,12 @@ func main() {
 
 	if *region != "" {
 		defaults.DefaultConfig = defaults.DefaultConfig.WithRegion(*region)
-		fmt.Println("Setting region:", defaults.DefaultConfig)
 		svc = s3.New(nil)
 	}
+
+	defaults.DefaultConfig = defaults.DefaultConfig.WithHTTPClient(&http.Client{
+		Timeout: time.Duration(*timeout) * time.Second,
+	})
 
 	user = flag.Arg(0)
 
@@ -94,7 +104,7 @@ func readAuthorizedKey(bucket, key string, r chan io.Reader) {
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
 			r <- bytes.NewReader([]byte(""))
-			printDbg("AWS Error(1):", awsErr.Code, awsErr.Message)
+			printDbg("AWS Error(1):", awsErr.Code(), awsErr.Message())
 			return
 		}
 		r <- bytes.NewReader([]byte(""))
@@ -119,7 +129,7 @@ func printAuthorizedKeys(bucket, key, user string) {
 
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
-			log.Fatal("AWS Error(2):", awsErr.Code, awsErr.Message)
+			log.Fatal("AWS Error(2):", awsErr.Code(), awsErr.Message())
 		}
 		log.Fatal("Error:", err)
 	}
